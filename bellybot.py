@@ -3,7 +3,11 @@ import asyncio
 from discord.ext import commands
 from discord.ext.commands import BucketType
 
-bot = commands.Bot(command_prefix="b!")
+intents = discord.Intents.default()
+intents.members = True
+intents.message_content = True
+
+bot = commands.Bot(command_prefix="b!", intents=intents)
 
 
 @bot.event  # This is used to register an event.
@@ -47,6 +51,7 @@ async def on_command_error(ctx, error):
 
 
 @commands.max_concurrency(1, BucketType.channel)
+@commands.max_concurrency(1, BucketType.user)
 @bot.command()
 async def timer(ctx, time_left=0):
     """Starts a countdown. The offset must be set to 30 seconds or 1, 2, 3, 4, 5 minutes. It will update the timer
@@ -55,13 +60,13 @@ async def timer(ctx, time_left=0):
     if time_left not in [1, 2, 3, 4, 5, 30]:
         raise commands.BadArgument
 
-
     # When people call the command, this message tells them what the chosen time for the timer is and starts a short
     # countdown previous to the main one. For 30s:
     if time_left == 30:
         time_str = f"{time_left}s"
-    else:
+    else:  # time is a number of minutes 1-5
         time_str = f"{time_left}min"
+        time_left = time_left*60
 
     embed_1 = green_embed(f"The countdown of **{time_str}** set up by "
                           f"{ctx.author.mention} **will start in: 5s**.")
@@ -92,13 +97,13 @@ async def timer(ctx, time_left=0):
         mins, secs = divmod(time_left, 60)
         time_left_str = f"{mins}:{secs:02d}"
         if restarted:
-            embed_text = f"The countdown of **30s** set up by {ctx.author.mention} **has been restarted**." \
+            embed_text = f"The countdown of **{time_str}** set up by {ctx.author.mention} **has been restarted**." \
                          f"\n\nTime left: `{time_left_str}`"
         elif added_seconds:
-            embed_text = f"The countdown of **30s** set up by {ctx.author.mention} **is already running**!" \
+            embed_text = f"The countdown of **{time_str}** set up by {ctx.author.mention} **is already running**!" \
                          f"\n\nTime left: `{time_left_str}`. Ten seconds added!"
         else:  # Normal operation
-            embed_text = f"The countdown of **30s** set up by {ctx.author.mention} **is already running**!" \
+            embed_text = f"The countdown of **{time_str}** set up by {ctx.author.mention} **is already running**!" \
                      f"\n\nTime left: `{time_left_str}`"
 
         embed_countdown = green_embed(embed_text)
@@ -112,12 +117,28 @@ async def timer(ctx, time_left=0):
             if str(reaction_added) == '❌':
                 aborted = True
                 time_left = 0
+
             if str(reaction_added) == "↩":
                 restarted = True
+
+                try:
+                    await msg_countdown.remove_reaction("↩", ctx.author)
+                except (discord.Forbidden, discord.NotFound):
+                    pass
+
                 time_left = time_left_backup
+
             if str(reaction_added) == "🔟":
                 added_seconds = True
+
+                try:
+                    await msg_countdown.remove_reaction("🔟", ctx.author)
+                except (discord.Forbidden, discord.NotFound):
+                    pass
+
                 time_left = time_left + 10
+                if time_left > 60*5:
+                    time_left = 60*5  # Don't let timer go over 5 mins
 
     if aborted:
         text_end = f"The countdown of **{time_str}** set up by {ctx.author.mention} **has been aborted**."
